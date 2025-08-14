@@ -18,10 +18,8 @@ type Query struct {
 }
 
 // Build SQL string and it arguments.
-func (q Query) Build(query rel.Query) (string, []interface{}) {
-	var (
-		buffer = q.BufferFactory.Create()
-	)
+func (q Query) Build(query rel.Query) (string, []any) {
+	buffer := q.BufferFactory.Create()
 
 	q.Write(&buffer, query)
 
@@ -85,7 +83,7 @@ func (q Query) WriteQuery(buffer *Buffer, query rel.Query) {
 	}
 
 	q.WriteOrderBy(buffer, query.Table, query.SortQuery)
-	q.WriteLimitOffet(buffer, query.LimitQuery, query.OffsetQuery)
+	q.WriteLimitOffset(buffer, query.LimitQuery, query.OffsetQuery)
 
 	if query.LockQuery != "" {
 		buffer.WriteByte(' ')
@@ -96,7 +94,7 @@ func (q Query) WriteQuery(buffer *Buffer, query rel.Query) {
 // WriteFrom SQL to buffer.
 func (q Query) WriteFrom(buffer *Buffer, table string) {
 	buffer.WriteString(" FROM ")
-	buffer.WriteEscape(table)
+	buffer.WriteTable(table)
 }
 
 // WriteJoin SQL to buffer.
@@ -107,14 +105,16 @@ func (q Query) WriteJoin(buffer *Buffer, table string, joins []rel.JoinQuery) {
 
 	for _, join := range joins {
 		var (
-			from = join.From
-			to   = join.To
+			_, sAlias      = extractAlias(table)
+			jTable, jAlias = extractAlias(join.Table)
+			from           = join.From
+			to             = join.To
 		)
 
 		// TODO: move this to core functionality, and infer join condition using assoc data.
 		if join.Arguments == nil && (join.From == "" || join.To == "") {
-			from = table + "." + strings.TrimSuffix(join.Table, "s") + "_id"
-			to = join.Table + ".id"
+			from = sAlias + "." + strings.TrimSuffix(jTable, "s") + "_id"
+			to = jAlias + ".id"
 		}
 
 		buffer.WriteByte(' ')
@@ -122,7 +122,7 @@ func (q Query) WriteJoin(buffer *Buffer, table string, joins []rel.JoinQuery) {
 		buffer.WriteByte(' ')
 
 		if join.Table != "" {
-			buffer.WriteEscape(join.Table)
+			buffer.WriteTable(join.Table)
 			buffer.WriteString(" ON ")
 			buffer.WriteEscape(from)
 			buffer.WriteString("=")
@@ -173,9 +173,7 @@ func (q Query) WriteHaving(buffer *Buffer, table string, filter rel.FilterQuery)
 
 // WriteOrderBy SQL to buffer.
 func (q Query) WriteOrderBy(buffer *Buffer, table string, orders []rel.SortQuery) {
-	var (
-		length = len(orders)
-	)
+	length := len(orders)
 
 	if length == 0 {
 		return
@@ -197,8 +195,8 @@ func (q Query) WriteOrderBy(buffer *Buffer, table string, orders []rel.SortQuery
 	}
 }
 
-// WriteLimitOffet SQL to buffer.
-func (q Query) WriteLimitOffet(buffer *Buffer, limit rel.Limit, offset rel.Offset) {
+// WriteLimitOffset SQL to buffer.
+func (q Query) WriteLimitOffset(buffer *Buffer, limit rel.Limit, offset rel.Offset) {
 	if limit > 0 {
 		buffer.WriteString(" LIMIT ")
 		buffer.WriteString(strconv.Itoa(int(limit)))

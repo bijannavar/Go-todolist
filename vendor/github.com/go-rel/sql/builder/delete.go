@@ -12,13 +12,11 @@ type Delete struct {
 }
 
 // Build SQL query and its arguments.
-func (ds Delete) Build(table string, filter rel.FilterQuery) (string, []interface{}) {
-	var (
-		buffer = ds.BufferFactory.Create()
-	)
+func (ds Delete) Build(table string, filter rel.FilterQuery) (string, []any) {
+	buffer := ds.BufferFactory.Create()
 
 	buffer.WriteString("DELETE FROM ")
-	buffer.WriteEscape(table)
+	buffer.WriteTable(table)
 
 	if !filter.None() {
 		buffer.WriteString(" WHERE ")

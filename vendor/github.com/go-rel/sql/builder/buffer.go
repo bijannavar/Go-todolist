@@ -30,16 +30,17 @@ type Buffer struct {
 	Quoter              Quoter
 	ValueConverter      driver.ValueConverter
 	ArgumentPlaceholder string
+	AllowTableSchema    bool
 	ArgumentOrdinal     bool
 	InlineValues        bool
 	BoolTrueValue       string
 	BoolFalseValue      string
 	valueCount          int
-	arguments           []interface{}
+	arguments           []any
 }
 
 // WriteValue query placeholder and append value to argument.
-func (b *Buffer) WriteValue(value interface{}) {
+func (b *Buffer) WriteValue(value any) {
 	if !b.InlineValues {
 		b.WritePlaceholder()
 		b.arguments = append(b.arguments, value)
@@ -47,7 +48,7 @@ func (b *Buffer) WriteValue(value interface{}) {
 	}
 
 	// Detect float bits to not lose precision after converting to float64
-	var floatBits = 64
+	floatBits := 64
 	if value != nil && reflect.TypeOf(value).Kind() == reflect.Float32 {
 		floatBits = 32
 	}
@@ -109,6 +110,11 @@ func (b *Buffer) WriteField(table, field string) {
 	b.WriteString(b.escape(table, field))
 }
 
+// WriteTable writes table name.
+func (b *Buffer) WriteTable(table string) {
+	b.WriteString(b.escape(table, ""))
+}
+
 // WriteEscape string.
 func (b *Buffer) WriteEscape(value string) {
 	b.WriteString(b.escape("", value))
@@ -125,30 +131,40 @@ func (b Buffer) escape(table, value string) string {
 		return escapedValue.(string)
 	}
 
-	var escaped_table string
+	table, alias := extractAlias(table)
+	var escapedTable string
 	if table != "" {
-		if strings.IndexByte(table, '.') >= 0 {
+		if table != alias {
+			if value == "" {
+				return b.escape(table, "") + " AS " + b.Quoter.ID(alias)
+			} else {
+				escapedTable = b.Quoter.ID(alias)
+			}
+		}
+		if b.AllowTableSchema && strings.IndexByte(table, '.') >= 0 {
 			parts := strings.Split(table, ".")
 			for i, part := range parts {
 				part = strings.TrimSpace(part)
 				parts[i] = b.Quoter.ID(part)
 			}
-			escaped_table = strings.Join(parts, ".")
+			escapedTable = strings.Join(parts, ".")
 		} else {
-			escaped_table = b.Quoter.ID(table)
+			escapedTable = b.Quoter.ID(strings.ReplaceAll(table, ".", "_"))
 		}
 	}
 
-	if value == "*" {
-		escapedValue = escaped_table + ".*"
+	if value == "" {
+		escapedValue = escapedTable
+	} else if value == "*" {
+		escapedValue = escapedTable + ".*"
 	} else if len(value) > 0 && value[0] == UnescapeCharacter {
 		escapedValue = value[1:]
 	} else if _, err := strconv.Atoi(value); err == nil {
 		escapedValue = value
 	} else if i := strings.Index(strings.ToLower(value), " as "); i > -1 {
-		escapedValue = b.escape(table, value[:i]) + " AS " + b.Quoter.ID(value[i+4:])
+		escapedValue = b.escape(alias, value[:i]) + " AS " + b.Quoter.ID(value[i+4:])
 	} else if start, end := strings.IndexRune(value, '('), strings.IndexRune(value, ')'); start >= 0 && end >= 0 && end > start {
-		escapedValue = value[:start+1] + b.escape(table, value[start+1:end]) + value[end:]
+		escapedValue = value[:start+1] + b.escape(alias, value[start+1:end]) + value[end:]
 	} else {
 		parts := strings.Split(value, ".")
 		for i, part := range parts {
@@ -160,7 +176,7 @@ func (b Buffer) escape(table, value string) string {
 		}
 		result := strings.Join(parts, ".")
 		if len(parts) == 1 && table != "" {
-			result = escaped_table + "." + result
+			result = escapedTable + "." + result
 		}
 		escapedValue = result
 	}
@@ -170,7 +186,7 @@ func (b Buffer) escape(table, value string) string {
 }
 
 // AddArguments appends multiple arguments without writing placeholder query..
-func (b *Buffer) AddArguments(args ...interface{}) {
+func (b *Buffer) AddArguments(args ...any) {
 	if b.arguments == nil {
 		b.arguments = args
 	} else {
@@ -178,7 +194,7 @@ func (b *Buffer) AddArguments(args ...interface{}) {
 	}
 }
 
-func (b Buffer) Arguments() []interface{} {
+func (b Buffer) Arguments() []any {
 	return b.arguments
 }
 
@@ -193,6 +209,7 @@ func (b *Buffer) Reset() {
 type BufferFactory struct {
 	Quoter              Quoter
 	ValueConverter      driver.ValueConverter
+	AllowTableSchema    bool
 	ArgumentPlaceholder string
 	ArgumentOrdinal     bool
 	InlineValues        bool
@@ -208,10 +225,21 @@ func (bf BufferFactory) Create() Buffer {
 	return Buffer{
 		Quoter:              bf.Quoter,
 		ValueConverter:      conv,
+		AllowTableSchema:    bf.AllowTableSchema,
 		ArgumentPlaceholder: bf.ArgumentPlaceholder,
 		ArgumentOrdinal:     bf.ArgumentOrdinal,
 		InlineValues:        bf.InlineValues,
 		BoolTrueValue:       bf.BoolTrueValue,
 		BoolFalseValue:      bf.BoolFalseValue,
 	}
+}
+
+// extract alias in the form of table as alias
+// if no alias, table will be returned as alias
+func extractAlias(input string) (string, string) {
+	if i := strings.Index(strings.ToLower(input), " as "); i > -1 {
+		return input[:i], input[i+4:]
+	}
+
+	return input, input
 }

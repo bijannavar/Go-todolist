@@ -2,7 +2,7 @@ version: '2'
 
 services:
   postgresql-master:
-    image: docker.io/bitnami/postgresql:13
+    image: docker.io/bitnami/postgresql:16
     ports:
       - '25432:5432'
     environment:
@@ -14,7 +14,7 @@ services:
       - POSTGRESQL_DATABASE=rel_test
       - ALLOW_EMPTY_PASSWORD=yes
   postgresql-slave:
-    image: docker.io/bitnami/postgresql:13
+    image: docker.io/bitnami/postgresql:16
     ports:
       - '25433:5432'
     depends_on:

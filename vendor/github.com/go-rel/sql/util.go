@@ -10,6 +10,10 @@ import (
 // DefaultTimeLayout default time layout.
 const DefaultTimeLayout = "2006-01-02 15:04:05"
 
+func DropKeyMapper(keyType rel.KeyType) string {
+	return "CONSTRAINT"
+}
+
 // ColumnMapper function.
 func ColumnMapper(column *rel.Column) (string, int, int) {
 	var (
@@ -68,6 +72,34 @@ func ColumnMapper(column *rel.Column) (string, int, int) {
 	return typ, m, n
 }
 
+// ColumnOptionsMapper function.
+func ColumnOptionsMapper(column *rel.Column) string {
+	var buffer strings.Builder
+
+	if column.Unsigned {
+		buffer.WriteString(" UNSIGNED")
+	}
+
+	if column.Unique {
+		buffer.WriteString(" UNIQUE")
+	}
+
+	if column.Required {
+		buffer.WriteString(" NOT NULL")
+	}
+
+	if column.Primary {
+		buffer.WriteString(" PRIMARY KEY")
+	}
+
+	buf := buffer.String()
+	if buf != "" {
+		buf = buf[1:]
+	}
+
+	return buf
+}
+
 // ExtractString between two string.
 func ExtractString(s, left, right string) string {
 	var (
@@ -82,7 +114,7 @@ func ExtractString(s, left, right string) string {
 	return s[start+len(left) : end]
 }
 
-func toInt64(i interface{}) int64 {
+func toInt64(i any) int64 {
 	var result int64
 
 	switch s := i.(type) {
